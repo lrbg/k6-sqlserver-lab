@@ -1,0 +1,15 @@
+# binario k6 construido con xk6
+/k6
+k6.exe
+
+# resultados crudos / metricas (se suben como artefacto, no a git)
+results/
+reports/metrics-*.json
+
+# temporales del workflow
+prompt.txt
+verdict.md
+
+# Python
+__pycache__/
+*.pyc

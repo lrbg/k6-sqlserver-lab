@@ -1,0 +1,194 @@
+name: Performance SQL Server (k6)
+
+# Automatico (cron diario) y manual (workflow_dispatch)
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Escenario a ejecutar"
+        type: choice
+        options: [both, smoke, load]
+        default: both
+      vus:
+        description: "Usuarios virtuales (vacio = default del escenario)"
+        required: false
+        default: ""
+      duration:
+        description: "Duracion, ej. 45s (vacio = default)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "30 13 * * *"   # ~07:30 CDMX
+
+permissions:
+  contents: write   # commitear el reporte
+  models: read      # agente de IA (GitHub Models)
+
+concurrency:
+  group: perf-sqlserver
+  cancel-in-progress: false
+
+env:
+  MSSQL_SA_PASSWORD: "Perf_Lab_2024"
+  SCENARIO: ${{ github.event.inputs.scenario || 'both' }}
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar Go (para xk6)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Cache binario k6 (xk6-sql)
+        id: cache-k6
+        uses: actions/cache@v4
+        with:
+          path: k6
+          key: k6-xk6-sql-sqlserver-v1
+
+      - name: Construir k6 con xk6-sql + driver SQL Server
+        if: steps.cache-k6.outputs.cache-hit != 'true'
+        run: |
+          go install go.k6.io/xk6/cmd/xk6@latest
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          xk6 build \
+            --with github.com/grafana/xk6-sql \
+            --with github.com/grafana/xk6-sql-driver-sqlserver \
+            --output ./k6
+          ./k6 version
+
+      - name: Levantar SQL Server (contenedor)
+        run: |
+          docker run -d --name mssql \
+            -e "ACCEPT_EULA=Y" \
+            -e "MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD}" \
+            -p 1433:1433 \
+            mcr.microsoft.com/mssql/server:2022-latest
+
+      - name: Esperar a que SQL Server responda
+        run: |
+          echo "Esperando a SQL Server..."
+          for i in $(seq 1 40); do
+            if docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+                 -S localhost -U sa -P "${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" -b >/dev/null 2>&1; then
+              echo "SQL Server listo (intento $i)"; exit 0
+            fi
+            sleep 3
+          done
+          echo "SQL Server no respondio a tiempo"; docker logs mssql | tail -30; exit 1
+
+      - name: Sembrar esquema y datos
+        run: |
+          docker cp db/seed.sql mssql:/tmp/seed.sql
+          docker exec mssql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -U sa -P "${MSSQL_SA_PASSWORD}" -C -i /tmp/seed.sql -b
+
+      - name: Ejecutar pruebas k6
+        run: |
+          mkdir -p reports results
+          CONN="sqlserver://sa:${MSSQL_SA_PASSWORD}@localhost:1433?database=perflab&encrypt=disable"
+          IN_VUS="${{ github.event.inputs.vus }}"
+          IN_DUR="${{ github.event.inputs.duration }}"
+
+          run_one () {
+            local name="$1" dvus="$2" ddur="$3"
+            local vus="${IN_VUS:-$dvus}" dur="${IN_DUR:-$ddur}"
+            echo "== Escenario $name (VUS=$vus DURATION=$dur) =="
+            ./k6 run scripts/db-perf.js \
+              -e CONN="$CONN" -e SCENARIO="$name" -e VUS="$vus" -e DURATION="$dur" || true
+          }
+
+          case "$SCENARIO" in
+            smoke) run_one smoke 3 30s ;;
+            load)  run_one load 20 60s ;;
+            both)  run_one smoke 3 30s; run_one load 20 60s ;;
+          esac
+
+          METRICS=$(ls reports/metrics-*.json 2>/dev/null | tr '\n' ' ')
+          echo "METRICS=$METRICS" >> "$GITHUB_ENV"
+
+      - name: Armar prompt para el agente
+        run: |
+          {
+            echo "Analiza estos resultados de una prueba de performance de SQL Server (k6 + JDBC/TDS)."
+            echo "Workload OLTP: point_select, range_scan, join, aggregate, insert_update."
+            echo "SLOs de referencia: error < 1%, p95 global < 200 ms."
+            echo "Responde en espanol. La PRIMERA palabra debe ser exactamente PASS, WARN o FAIL."
+            echo "Luego 2-4 puntos: que query es el cuello de botella y recomendaciones (indices, plan, contencion). Se breve."
+            echo ""
+            echo "=== METRICAS (JSON) ==="
+            cat reports/metrics-*.json
+          } > prompt.txt
+          cat prompt.txt
+
+      - name: Validacion por agente de IA (GitHub Models)
+        id: ai
+        continue-on-error: true
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4o-mini
+          prompt-file: prompt.txt
+          max-tokens: 500
+          system-prompt: "Eres un DBA/ingeniero de performance senior de SQL Server. Analizas metricas de carga y das un veredicto claro y accionable."
+
+      - name: Consolidar veredicto (con fallback)
+        env:
+          AI_RESPONSE: ${{ steps.ai.outputs.response }}
+        run: |
+          set -e
+          if [ -n "$AI_RESPONSE" ]; then
+            printf '%s\n' "$AI_RESPONSE" > verdict.md
+          else
+            echo "Agente de IA no disponible; veredicto por umbrales."
+            worst=$(jq -s 'map(.overall // {}) | {err:(map(.error_pct // 0)|max), p95:(map(.p95_ms // 0)|max)}' reports/metrics-*.json)
+            err=$(echo "$worst" | jq '.err'); p95=$(echo "$worst" | jq '.p95')
+            level=PASS
+            awk "BEGIN{exit !($err>1 || $p95>400)}" && level=FAIL
+            [ "$level" = "PASS" ] && awk "BEGIN{exit !($err>0.1 || $p95>200)}" && level=WARN
+            printf '%s (fallback por umbrales)\n\n- Error maximo: %s%%\n- p95 maximo: %s ms\n' "$level" "$err" "$p95" > verdict.md
+          fi
+          cat verdict.md
+
+      - name: Generar reporte Markdown
+        run: |
+          set -e
+          STAMP=$(date -u +"%Y-%m-%d_%H%M")
+          HUMAN=$(date -u +"%Y-%m-%d %H:%M UTC")
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          python3 scripts/gen_report.py \
+            --out "reports/report-${STAMP}.md" \
+            --date "$HUMAN" --run-url "$RUN_URL" \
+            --verdict verdict.md --metrics $METRICS
+          echo "REPORT=reports/report-${STAMP}.md" >> "$GITHUB_ENV"
+          {
+            echo "## Reporte de performance SQL Server"
+            cat "reports/report-${STAMP}.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-sqlserver-results
+          path: reports/
+          retention-days: 14
+
+      - name: Commitear reporte
+        run: |
+          git config user.name "perf-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add reports/ README.md
+          if git diff --cached --quiet; then
+            echo "Sin cambios para commitear."
+          else
+            git commit -m "Reporte de performance SQL Server ${REPORT} [skip ci]"
+            git push
+          fi
+
+      - name: Detener SQL Server
+        if: always()
+        run: docker rm -f mssql || true
