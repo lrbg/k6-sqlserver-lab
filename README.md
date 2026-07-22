@@ -14,7 +14,12 @@ base de datos externa ni secrets.
 ## Ultimo reporte
 
 <!-- LATEST_REPORT_START -->
-_Aun no hay corridas. Ejecuta el workflow para generar el primer reporte._
+**Ultima corrida:** 2026-07-22 03:47 UTC - Veredicto `FAIL`  
+Reporte completo: [`reports/report-2026-07-22_0347.md`](reports/report-2026-07-22_0347.md)
+
+| Escenario | Queries | Error % | p95 (ms) | q/s |
+| --- | --- | --- | --- | --- |
+| smoke | 8060 | 0% | 56 | 268.39 |
 <!-- LATEST_REPORT_END -->
 
 ---
