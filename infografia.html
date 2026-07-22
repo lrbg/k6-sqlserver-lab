@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>k6 + SQL Server Perf Lab — Arquitectura</title>
+<style>
+  :root{
+    --sql-red:#CC2927;
+    --sql-dark:#8A1B1A;
+    --k6-purple:#7D64FF;
+    --k6-dark:#5B44C9;
+    --ink:#1b1b29;
+    --muted:#5a6478;
+    --paper:#f5f6fa;
+    --card:#ffffff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(circle at 12% -8%, rgba(125,100,255,.20), transparent 38%),
+      radial-gradient(circle at 92% -6%, rgba(204,41,39,.18), transparent 40%),
+      var(--paper);
+    color:var(--ink);line-height:1.5;
+    padding:clamp(16px,4vw,52px);
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+
+  /* Hero */
+  header{text-align:center;margin-bottom:44px}
+  .kicker{font-size:12px;font-weight:800;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
+  .wordmark{
+    font-family:"Arial Black","Helvetica Neue",Impact,sans-serif;font-weight:900;
+    font-size:clamp(40px,8.5vw,86px);line-height:.95;margin:10px 0 8px;text-transform:uppercase;letter-spacing:1px;
+  }
+  .wordmark .k6{color:var(--k6-purple)}
+  .wordmark .x{color:var(--muted);font-weight:700}
+  .wordmark .sql{color:var(--sql-red)}
+  .subtitle{font-size:clamp(15px,2.4vw,20px);font-weight:700;color:var(--ink)}
+  .tagline{margin-top:6px;color:var(--muted);font-size:14px}
+
+  .section-title{
+    font-size:13px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;
+    text-align:center;margin:44px 0 20px;color:var(--k6-dark);
+  }
+  .section-title.red{color:var(--sql-dark)}
+
+  /* Paso a paso */
+  .steps{position:relative;padding-left:8px}
+  .step{
+    display:flex;gap:18px;align-items:flex-start;position:relative;padding:0 0 20px 0;
+  }
+  .rail{
+    position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;
+  }
+  .num{
+    width:44px;height:44px;border-radius:50%;flex:0 0 auto;z-index:1;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:900;font-size:18px;color:#fff;border:3px solid var(--ink);
+    background:linear-gradient(135deg,var(--k6-purple),var(--k6-dark));
+    box-shadow:3px 3px 0 rgba(27,27,41,.18);
+  }
+  .step:nth-child(n+6) .num{background:linear-gradient(135deg,var(--sql-red),var(--sql-dark))}
+  .line{position:absolute;top:44px;bottom:-6px;width:3px;background:#dfe2ee}
+  .step:last-child .line{display:none}
+  .body{
+    background:var(--card);border:3px solid var(--ink);border-radius:14px;
+    padding:14px 18px;flex:1;box-shadow:4px 4px 0 rgba(27,27,41,.10);
+  }
+  .body h4{font-size:16px;margin-bottom:3px}
+  .body p{font-size:13.5px;color:var(--muted)}
+  .body code{background:#eef0f6;padding:1px 6px;border-radius:5px;font-size:.85em;color:var(--ink)}
+
+  /* Arquitectura por capas */
+  .stack{display:flex;flex-direction:column;gap:12px}
+  .layer{
+    display:flex;align-items:center;gap:18px;border-radius:14px;padding:16px 20px;
+    border:3px solid var(--ink);background:var(--card);
+    box-shadow:5px 5px 0 rgba(27,27,41,.12);
+  }
+  .layer .tag{
+    flex:0 0 128px;font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+    color:#fff;padding:8px 10px;border-radius:9px;text-align:center;border:2px solid var(--ink);
+  }
+  .l1 .tag{background:#1f6feb} .l2 .tag{background:var(--k6-purple)}
+  .l3 .tag{background:var(--sql-red)} .l4 .tag{background:#128a3a} .l5 .tag{background:#b7791f}
+  .layer .content h4{font-size:16px;margin-bottom:2px}
+  .layer .content p{font-size:13.5px;color:var(--muted)}
+  .arrow{text-align:center;color:#c2c7d6;font-size:20px;line-height:.4;margin:-4px 0}
+
+  /* chips + slo */
+  .grid2{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .card{background:var(--card);border:3px solid var(--ink);border-radius:16px;padding:20px;box-shadow:5px 5px 0 rgba(27,27,41,.10)}
+  .card h3{font-size:15px;margin-bottom:12px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;background:#f0edff;border:2px solid var(--k6-purple);color:var(--k6-dark)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:8px 10px;text-align:left;border-bottom:2px solid #eef0f6}
+  th{background:var(--sql-dark);color:#fff}
+  .pass{color:#128a3a;font-weight:800}.warn{color:#b7791f;font-weight:800}.fail{color:var(--sql-red);font-weight:800}
+
+  footer{text-align:center;margin-top:44px;font-size:12px;color:#8a93a6}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">Laboratorio de performance de base de datos</div>
+    <div class="wordmark"><span class="k6">k6</span> <span class="x">&times;</span> <span class="sql">SQL Server</span></div>
+    <div class="subtitle">Pruebas de carga automatizadas, validadas por agente y reportadas</div>
+    <div class="tagline">GitHub Actions &middot; xk6-sql &middot; contenedor auto-contenido &middot; reporte Mermaid</div>
+  </header>
+
+  <!-- PASO A PASO -->
+  <div class="section-title">Paso a paso del pipeline</div>
+  <div class="steps">
+
+    <div class="step"><div class="rail"><div class="num">1</div><div class="line"></div></div>
+      <div class="body"><h4>Trigger</h4><p>Arranca por <code>cron</code> diario o de forma manual con <code>Run workflow</code> (inputs: escenario, VUs, duracion).</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">2</div><div class="line"></div></div>
+      <div class="body"><h4>Construir k6</h4><p><code>xk6</code> compila un k6 con <code>xk6-sql</code> + driver de SQL Server. El binario se cachea entre corridas.</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">3</div><div class="line"></div></div>
+      <div class="body"><h4>Levantar SQL Server</h4><p><code>docker run</code> de <code>mssql/server:2022</code>. La base vive solo durante la corrida.</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">4</div><div class="line"></div></div>
+      <div class="body"><h4>Esperar readiness</h4><p>Reintentos con <code>sqlcmd</code> hasta que el motor responde <code>SELECT 1</code>.</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">5</div><div class="line"></div></div>
+      <div class="body"><h4>Sembrar datos</h4><p><code>seed.sql</code> crea el esquema de ventas y carga 5k clientes / 20k ordenes / 60k renglones con <code>GENERATE_SERIES</code>.</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">6</div><div class="line"></div></div>
+      <div class="body"><h4>Ejecutar k6</h4><p>Workload OLTP (5 tipos de query). Mide p50/p95/p99, throughput y % de error por query.</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">7</div><div class="line"></div></div>
+      <div class="body"><h4>Validar con agente IA</h4><p>El agente (GitHub Models) analiza las metricas. El veredicto <b>PASS/WARN/FAIL</b> se calcula aparte de forma determinista vs los SLOs.</p></div></div>
+
+    <div class="step"><div class="rail"><div class="num">8</div><div class="line"></div></div>
+      <div class="body"><h4>Reportar</h4><p>Markdown con graficas Mermaid, se commitea, actualiza el README y sube los artefactos.</p></div></div>
+
+  </div>
+
+  <!-- ARQUITECTURA POR CAPAS -->
+  <div class="section-title red">Como se divide la arquitectura</div>
+  <div class="stack">
+
+    <div class="layer l1"><div class="tag">Capa 1<br>Orquestacion</div>
+      <div class="content"><h4>GitHub Actions</h4><p>Dispara (cron + manual), controla permisos (<code>contents:write</code>, <code>models:read</code>) y encadena los pasos.</p></div></div>
+    <div class="arrow">&#9660;</div>
+
+    <div class="layer l2"><div class="tag">Capa 2<br>Carga</div>
+      <div class="content"><h4>k6 + xk6-sql</h4><p>Motor que genera la carga: usuarios virtuales, thresholds y metricas por tipo de query.</p></div></div>
+    <div class="arrow">&#9660;</div>
+
+    <div class="layer l3"><div class="tag">Capa 3<br>SUT</div>
+      <div class="content"><h4>SQL Server 2022 (contenedor)</h4><p>Sistema bajo prueba, auto-contenido y sembrado. Sin base de datos externa ni secrets.</p></div></div>
+    <div class="arrow">&#9660;</div>
+
+    <div class="layer l4"><div class="tag">Capa 4<br>Validacion</div>
+      <div class="content"><h4>Agente IA + veredicto</h4><p>Analisis en lenguaje natural (cuello de botella, indices) y badge determinista por SLO.</p></div></div>
+    <div class="arrow">&#9660;</div>
+
+    <div class="layer l5"><div class="tag">Capa 5<br>Publicacion</div>
+      <div class="content"><h4>Reporte + evidencia</h4><p><code>metrics.json</code> &rarr; <code>gen_report.py</code> &rarr; Markdown + Mermaid, commit al README y artefactos.</p></div></div>
+
+  </div>
+
+  <!-- WORKLOAD + SLO -->
+  <div class="section-title">Workload y SLOs</div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Tipos de query (OLTP)</h3>
+      <div class="chips">
+        <span class="chip">point_select</span>
+        <span class="chip">range_scan</span>
+        <span class="chip">join</span>
+        <span class="chip">aggregate</span>
+        <span class="chip">insert_update</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>SLOs de referencia</h3>
+      <table>
+        <thead><tr><th>Metrica</th><th class="pass">PASS</th><th class="warn">WARN</th><th class="fail">FAIL</th></tr></thead>
+        <tbody>
+          <tr><td>% error</td><td class="pass">&lt;0.1%</td><td class="warn">0.1-1%</td><td class="fail">&gt;1%</td></tr>
+          <tr><td>p95 global</td><td class="pass">&lt;200ms</td><td class="warn">200-400ms</td><td class="fail">&gt;400ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>k6-sqlserver-lab &middot; Laboratorio auto-contenido con fines de aprendizaje / benchmark.</footer>
+
+</div>
+</body>
+</html>

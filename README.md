@@ -9,6 +9,15 @@ El laboratorio es **auto-contenido**: el workflow levanta SQL Server en un
 contenedor, siembra un esquema de ejemplo y corre k6 contra el. No necesitas una
 base de datos externa ni secrets.
 
+## Infografia
+
+Paso a paso del pipeline y division de la arquitectura por capas:
+
+![Infografia — k6 x SQL Server Perf Lab](infografia.png)
+
+> Fuente editable: [`infografia.html`](infografia.html). Para regenerar el PNG:
+> `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --force-device-scale-factor=2 --screenshot=infografia.png --window-size=1200,2600 infografia.html`
+
 ---
 
 ## Ultimo reporte
@@ -104,6 +113,8 @@ python3 scripts/gen_report.py --out reports/report-local.md --date local \
 ```
 k6-sqlserver-lab/
 ├── README.md
+├── infografia.png              # infografia (imagen): paso a paso + arquitectura
+├── infografia.html             # fuente editable de la infografia
 ├── .github/workflows/db-perf.yml
 ├── db/seed.sql                 # esquema + datos de ejemplo
 ├── scripts/
