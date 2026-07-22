@@ -14,12 +14,12 @@ base de datos externa ni secrets.
 ## Ultimo reporte
 
 <!-- LATEST_REPORT_START -->
-**Ultima corrida:** 2026-07-22 03:47 UTC - Veredicto `FAIL`  
-Reporte completo: [`reports/report-2026-07-22_0347.md`](reports/report-2026-07-22_0347.md)
+**Ultima corrida:** 2026-07-22 04:22 UTC - Veredicto `PASS`  
+Reporte completo: [`reports/report-2026-07-22_0422.md`](reports/report-2026-07-22_0422.md)
 
 | Escenario | Queries | Error % | p95 (ms) | q/s |
 | --- | --- | --- | --- | --- |
-| smoke | 8060 | 0% | 56 | 268.39 |
+| smoke | 8325 | 0.01% | 50 | 277.36 |
 <!-- LATEST_REPORT_END -->
 
 ---
