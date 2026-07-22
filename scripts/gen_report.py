@@ -34,15 +34,28 @@ def mermaid_bar(title, y_label, labels, values):
     )
 
 
-def verdict_badge(text):
-    t = (text or "").upper()
-    if "FAIL" in t:
+def compute_badge(metrics, warn_err=0.1, fail_err=1.0, warn_p95=200, fail_p95=400):
+    """Veredicto DETERMINISTA desde las metricas vs SLOs (no depende del texto del agente).
+
+    Toma el peor error% y el peor p95 global entre los escenarios.
+    """
+    worst_err = 0.0
+    worst_p95 = 0.0
+    seen = False
+    for m in metrics:
+        o = m.get("overall") or {}
+        if not o:
+            continue
+        seen = True
+        worst_err = max(worst_err, o.get("error_pct", 0) or 0)
+        worst_p95 = max(worst_p95, o.get("p95_ms", 0) or 0)
+    if not seen:
+        return "N/D"
+    if worst_err > fail_err or worst_p95 > fail_p95:
         return "FAIL"
-    if "WARN" in t:
+    if worst_err > warn_err or worst_p95 > warn_p95:
         return "WARN"
-    if "PASS" in t:
-        return "PASS"
-    return "N/D"
+    return "PASS"
 
 
 def scenario_section(m):
@@ -134,16 +147,17 @@ def main():
     if args.verdict and os.path.exists(args.verdict):
         with open(args.verdict, encoding="utf-8") as fh:
             verdict_text = fh.read().strip()
-    badge = verdict_badge(verdict_text)
+    # Badge determinista desde metricas vs SLOs (autoritativo).
+    badge = compute_badge(metrics)
 
     doc = ["# Reporte de performance - SQL Server (k6)\n"]
     doc.append(f"**Fecha:** {args.date}  ")
-    doc.append(f"**Veredicto del agente:** `{badge}`  ")
+    doc.append(f"**Veredicto (SLO):** `{badge}`  ")
     if args.run_url:
         doc.append(f"**Corrida:** [ver en GitHub Actions]({args.run_url})  ")
     doc.append("")
 
-    doc.append("## Validacion del agente de IA\n")
+    doc.append("## Analisis del agente de IA\n")
     doc.append(verdict_text if verdict_text else "_El agente no devolvio analisis en esta corrida._")
     doc.append("")
 

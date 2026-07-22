@@ -115,11 +115,13 @@ jobs:
       - name: Armar prompt para el agente
         run: |
           {
-            echo "Analiza estos resultados de una prueba de performance de SQL Server (k6 + JDBC/TDS)."
+            echo "Analiza estos resultados de una prueba de performance de SQL Server (k6 + TDS)."
             echo "Workload OLTP: point_select, range_scan, join, aggregate, insert_update."
-            echo "SLOs de referencia: error < 1%, p95 global < 200 ms."
-            echo "Responde en espanol. La PRIMERA palabra debe ser exactamente PASS, WARN o FAIL."
-            echo "Luego 2-4 puntos: que query es el cuello de botella y recomendaciones (indices, plan, contencion). Se breve."
+            echo "SLOs de referencia: error < 1%, p95 global < 200 ms (el veredicto PASS/WARN/FAIL"
+            echo "se calcula aparte de forma determinista; NO lo declares tu)."
+            echo "Responde en espanol, 2-4 puntos concisos: cual query es el cuello de botella"
+            echo "(compara sus p95), y recomendaciones concretas (indices, plan de ejecucion,"
+            echo "contencion/bloqueos). No inventes problemas si las metricas estan holgadas."
             echo ""
             echo "=== METRICAS (JSON) ==="
             cat reports/metrics-*.json
