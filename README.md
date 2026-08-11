@@ -23,13 +23,13 @@ Paso a paso del pipeline y division de la arquitectura por capas:
 ## Ultimo reporte
 
 <!-- LATEST_REPORT_START -->
-**Ultima corrida:** 2026-08-10 14:35 UTC - Veredicto `WARN`  
-Reporte completo: [`reports/report-2026-08-10_1435.md`](reports/report-2026-08-10_1435.md)
+**Ultima corrida:** 2026-08-11 14:36 UTC - Veredicto `FAIL`  
+Reporte completo: [`reports/report-2026-08-11_1436.md`](reports/report-2026-08-11_1436.md)
 
 | Escenario | Queries | Error % | p95 (ms) | q/s |
 | --- | --- | --- | --- | --- |
-| load | 20060 | 0% | 268 | 333.5 |
-| smoke | 7320 | 0% | 65 | 243.67 |
+| load | 10140 | 0% | 511 | 167.54 |
+| smoke | 5010 | 0% | 98 | 166.6 |
 <!-- LATEST_REPORT_END -->
 
 ---
